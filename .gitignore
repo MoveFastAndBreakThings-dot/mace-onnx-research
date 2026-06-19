@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+mace_traced.pt
+*.egg-info/
+.DS_Store
