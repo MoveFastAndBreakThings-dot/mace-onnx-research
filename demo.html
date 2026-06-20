@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MACE-MP-0 · ONNX Browser Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #58a6ff, #bc8cff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: #8b949e;
+  font-size: 0.9rem;
+  margin-bottom: 36px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+
+.card h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 18px;
+}
+
+/* ── Molecule selector ── */
+.mol-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mol-btn {
+  padding: 8px 18px;
+  border-radius: 20px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #8b949e;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.mol-btn:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.mol-btn.active {
+  border-color: #58a6ff;
+  background: #0c1f3f;
+  color: #58a6ff;
+  font-weight: 600;
+}
+
+/* ── Canvas ── */
+canvas {
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: #0d1117;
+}
+
+.mol-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.badge {
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.badge.green  { background: #0f2a1a; color: #3fb950; border: 1px solid #238636; }
+.badge.blue   { background: #0c1f3f; color: #58a6ff; border: 1px solid #1f6feb; }
+.badge.purple { background: #1e0f3a; color: #bc8cff; border: 1px solid #6e40c9; }
+.badge.gray   { background: #1c2128; color: #8b949e; border: 1px solid #30363d; }
+
+/* ── Run button ── */
+#runBtn {
+  display: block;
+  margin: 0 auto 12px;
+  padding: 14px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #238636, #2ea043);
+  color: white;
+  transition: opacity 0.2s, transform 0.1s;
+  width: 100%;
+  max-width: 760px;
+  font-family: inherit;
+}
+#runBtn:hover { opacity: 0.88; transform: translateY(-1px); }
+#runBtn:active { transform: translateY(0); }
+#runBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+#status {
+  text-align: center;
+  font-size: 0.88rem;
+  color: #8b949e;
+  margin-bottom: 16px;
+  min-height: 20px;
+}
+
+/* ── Result card ── */
+#result-card {
+  display: none;
+  background: #161b22;
+  border: 1px solid #238636;
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.result-box {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+}
+.result-box .label {
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 8px;
+}
+.result-box .value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+.result-box .unit { font-size: 0.76rem; color: #8b949e; margin-top: 4px; }
+
+.match-badge {
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.match-badge.exact { background: #0f2a1a; border: 1px solid #238636; color: #3fb950; }
+.match-badge.close { background: #1a1a0a; border: 1px solid #9e6a03; color: #d29922; }
+
+/* ── Benchmark table ── */
+#bench-card {
+  display: none;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+th {
+  color: #8b949e;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid #30363d;
+}
+th:first-child { text-align: left; }
+td {
+  padding: 8px 10px;
+  text-align: right;
+  border-bottom: 1px solid #1c2128;
+  font-family: 'Courier New', monospace;
+}
+td:first-child { text-align: left; font-family: inherit; color: #e6edf3; }
+td.exact { color: #3fb950; }
+td.close  { color: #d29922; }
+
+.atom-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  color: #8b949e;
+}
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+
+.footer {
+  margin-top: 32px;
+  color: #484f58;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.forces-note {
+  margin-top: 12px;
+  color: #484f58;
+  font-size: 0.8rem;
+  text-align: center;
+  font-style: italic;
+}
+</style>
+</head>
+<body>
+
+<h1>MACE-MP-0 · Browser Demo</h1>
+<p class="subtitle">
+  ML force field running entirely in your browser via ONNX Runtime Web<br>
+  No Python &nbsp;·&nbsp; No server &nbsp;·&nbsp; No installation
+</p>
+
+<!-- Molecule selector -->
+<div class="card">
+  <h2>Select Molecule</h2>
+  <div class="mol-grid" id="mol-grid"></div>
+</div>
+
+<!-- Molecule canvas -->
+<div class="card" id="mol-card">
+  <h2 id="mol-title">H₂O Molecule</h2>
+  <canvas id="mol" width="700" height="280"></canvas>
+  <div class="atom-legend" id="atom-legend"></div>
+  <div class="mol-meta" id="mol-meta"></div>
+</div>
+
+<!-- Run button -->
+<button id="runBtn" onclick="runModel()">⚡ Run MACE Energy Prediction</button>
+<div id="status">Select a molecule, then click Run</div>
+
+<!-- Result -->
+<div id="result-card">
+  <h2 style="color:#8b949e;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;">
+    Prediction Result
+  </h2>
+  <div class="result-grid" style="grid-template-columns:1fr 1fr">
+    <div class="result-box">
+      <div class="label">ONNX Energy</div>
+      <div class="value" id="onnx-val" style="color:#58a6ff">—</div>
+      <div class="unit">eV</div>
+    </div>
+    <div class="result-box">
+      <div class="label">MACE Reference</div>
+      <div class="value" id="pt-val" style="color:#3fb950">—</div>
+      <div class="unit">eV</div>
+    </div>
+  </div>
+  <div class="match-badge exact" id="match-badge" style="margin:14px 0">—</div>
+
+  <div style="font-size:0.8rem;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">
+    Inference Speed
+  </div>
+  <div class="result-grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="result-box">
+      <div class="label">ONNX · Browser (WASM)</div>
+      <div class="value" id="time-onnx-browser" style="color:#bc8cff">—</div>
+      <div class="unit">ms · this run</div>
+    </div>
+    <div class="result-box">
+      <div class="label">ONNX · Python (CPU)</div>
+      <div class="value" id="time-onnx-py" style="color:#58a6ff">—</div>
+      <div class="unit">ms · avg 10 runs</div>
+    </div>
+    <div class="result-box">
+      <div class="label">MACE · Python (CPU)</div>
+      <div class="value" id="time-pt-py" style="color:#3fb950">—</div>
+      <div class="unit">ms · avg 10 runs</div>
+    </div>
+  </div>
+  <div id="speedup-badge" style="margin-top:12px;padding:8px;background:#1c2128;border:1px solid #30363d;border-radius:8px;text-align:center;font-size:0.85rem;color:#8b949e;">—</div>
+  <div class="forces-note">Forces not available in ONNX — requires autograd (future work)</div>
+</div>
+
+<!-- Benchmark table -->
+<div id="bench-card">
+  <h2 style="color:#8b949e;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:16px;">
+    Benchmark Results
+  </h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Molecule</th>
+        <th>Atoms</th>
+        <th>Edges</th>
+        <th>MACE (eV)</th>
+        <th>ONNX (eV)</th>
+        <th>|Δ| (eV)</th>
+        <th>MACE·Py (ms)</th>
+        <th>ONNX·Py (ms)</th>
+        <th>ONNX·WASM (ms)</th>
+      </tr>
+    </thead>
+    <tbody id="bench-body"></tbody>
+  </table>
+</div>
+
+<div class="footer">
+  MACE-MP-0 · Batatia et al. 2023 · ONNX export with dynamic axes · Samardeep Singh · University of Alberta
+</div>
+
+<script>
+// ── Atom appearance ───────────────────────────────────────────────────────────
+const ATOM = {
+  H: { color: '#aaccff', glow: '#7799ff', r: 13 },
+  C: { color: '#aaaaaa', glow: '#888888', r: 20 },
+  N: { color: '#5577ff', glow: '#3355ee', r: 18 },
+  O: { color: '#ff5555', glow: '#dd2222', r: 18 },
+  S: { color: '#ffdd44', glow: '#ccaa22', r: 20 },
+};
+const defaultAtom = { color: '#cccccc', glow: '#aaaaaa', r: 16 };
+
+// Covalent radii (Å) for bond detection
+const COV_R = { H: 0.31, C: 0.76, N: 0.71, O: 0.66, S: 1.05 };
+
+// ── Global state ──────────────────────────────────────────────────────────────
+let molData = {};      // from molecules.json
+let currentMol = null;
+let onnxSession = null;
+const benchResults = {};
+
+// ── Load manifest and init ────────────────────────────────────────────────────
+fetch('molecules.json')
+  .then(r => r.json())
+  .then(data => {
+    molData = data;
+    buildSelector();
+    selectMol('H2O');
+  });
+
+function buildSelector() {
+  const grid = document.getElementById('mol-grid');
+  for (const [key, info] of Object.entries(molData)) {
+    const btn = document.createElement('button');
+    btn.className = 'mol-btn';
+    btn.id = `btn-${key}`;
+    btn.textContent = info.label;
+    btn.onclick = () => selectMol(key);
+    grid.appendChild(btn);
+  }
+}
+
+function selectMol(key) {
+  currentMol = key;
+  document.querySelectorAll('.mol-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`btn-${key}`).classList.add('active');
+
+  const info = molData[key];
+  document.getElementById('mol-title').textContent = info.label;
+  drawMolecule(info);
+
+  // Reset result state
+  document.getElementById('result-card').style.display = 'none';
+  document.getElementById('status').textContent = 'Ready — click Run to compute energy';
+  document.getElementById('runBtn').textContent = '⚡ Run MACE Energy Prediction';
+  document.getElementById('runBtn').disabled = false;
+}
+
+// ── Bond detection ────────────────────────────────────────────────────────────
+function getBonds(positions, symbols) {
+  const bonds = [];
+  for (let i = 0; i < positions.length; i++) {
+    for (let j = i + 1; j < positions.length; j++) {
+      const ri = COV_R[symbols[i]] ?? 0.7;
+      const rj = COV_R[symbols[j]] ?? 0.7;
+      const threshold = (ri + rj) * 1.3;
+      const dx = positions[i][0] - positions[j][0];
+      const dy = positions[i][1] - positions[j][1];
+      const dz = positions[i][2] - positions[j][2];
+      if (Math.sqrt(dx*dx + dy*dy + dz*dz) < threshold) bonds.push([i, j]);
+    }
+  }
+  return bonds;
+}
+
+// ── Pick best 2D projection (max pairwise spread) ─────────────────────────────
+function bestProjection(positions) {
+  let best = [0, 1], bestSpread = -1;
+  for (const [a, b] of [[0,1],[0,2],[1,2]]) {
+    let spread = 0;
+    for (let i = 0; i < positions.length; i++) {
+      for (let j = i + 1; j < positions.length; j++) {
+        const da = positions[i][a] - positions[j][a];
+        const db = positions[i][b] - positions[j][b];
+        spread += da*da + db*db;
+      }
+    }
+    if (spread > bestSpread) { bestSpread = spread; best = [a, b]; }
+  }
+  return best;
+}
+
+// ── Draw molecule on canvas ───────────────────────────────────────────────────
+function drawMolecule(info) {
+  const canvas = document.getElementById('mol');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const positions = info.positions;
+  const symbols = info.symbols;
+  const bonds = getBonds(positions, symbols);
+
+  // Project to 2D
+  const [ax, bx] = bestProjection(positions);
+  const px = positions.map(p => p[ax]);
+  const py = positions.map(p => p[bx]);
+
+  // Normalize to canvas with padding
+  const pad = 60;
+  const minX = Math.min(...px), maxX = Math.max(...px);
+  const minY = Math.min(...py), maxY = Math.max(...py);
+  const rangeX = maxX - minX || 1;
+  const rangeY = maxY - minY || 1;
+  const scale = Math.min((W - 2*pad) / rangeX, (H - 2*pad) / rangeY) * 0.8;
+
+  const cx = (W - (maxX + minX) * scale) / 2;
+  const cy = (H - (maxY + minY) * scale) / 2;
+
+  const toCanvas = (i) => ({
+    x: px[i] * scale + cx,
+    y: py[i] * scale + cy,
+  });
+
+  // Draw bonds
+  ctx.strokeStyle = '#444c56';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  for (const [i, j] of bonds) {
+    const a = toCanvas(i), b = toCanvas(j);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  // Draw atoms (back to front by y for crude depth)
+  const order = [...Array(positions.length).keys()].sort((a,b) => py[a] - py[b]);
+  for (const i of order) {
+    const { x, y } = toCanvas(i);
+    const atom = ATOM[symbols[i]] ?? defaultAtom;
+
+    // Glow
+    const grd = ctx.createRadialGradient(x, y, 0, x, y, atom.r * 2);
+    grd.addColorStop(0, atom.glow + '55');
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(x, y, atom.r * 2, 0, Math.PI*2);
+    ctx.fill();
+
+    // Circle
+    ctx.fillStyle = atom.color;
+    ctx.beginPath();
+    ctx.arc(x, y, atom.r, 0, Math.PI*2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#0d1117';
+    ctx.font = `bold ${Math.max(10, atom.r - 2)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(symbols[i], x, y);
+  }
+
+  // Build legend (unique elements)
+  const seen = new Set();
+  const legendEl = document.getElementById('atom-legend');
+  legendEl.innerHTML = '';
+  for (const sym of symbols) {
+    if (seen.has(sym)) continue;
+    seen.add(sym);
+    const atom = ATOM[sym] ?? defaultAtom;
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="dot" style="background:${atom.color}"></div> ${sym}`;
+    legendEl.appendChild(item);
+  }
+
+  // Meta badges
+  const meta = document.getElementById('mol-meta');
+  meta.innerHTML = `
+    <span class="badge green">${info.nAtoms} atoms</span>
+    <span class="badge blue">${info.nEdges} edges</span>
+    <span class="badge purple">MACE-MP-0 small · 3.8M params</span>
+    <span class="badge gray">16.1 MB model</span>
+  `;
+}
+
+// ── Load ONNX session (once) ──────────────────────────────────────────────────
+async function getSession() {
+  if (onnxSession) return onnxSession;
+  document.getElementById('status').textContent = '📦 Loading mace_dynamic.onnx (16.1 MB)…';
+  onnxSession = await ort.InferenceSession.create('./mace_dynamic.onnx', {
+    executionProviders: ['wasm'],
+  });
+  return onnxSession;
+}
+
+// ── Run inference ─────────────────────────────────────────────────────────────
+async function runModel() {
+  if (!currentMol) return;
+  const btn = document.getElementById('runBtn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+
+  try {
+    const sess = await getSession();
+    const info = molData[currentMol];
+
+    status.textContent = `📂 Loading inputs for ${info.formula}…`;
+    const resp = await fetch('./' + info.inputFile);
+    const inputs = await resp.json();
+
+    status.textContent = '⚡ Running inference…';
+    const t0 = performance.now();
+
+    const feeds = {};
+    for (const [name, meta] of Object.entries(inputs)) {
+      const isInt = meta.dtype.includes('int');
+      let raw;
+      if (isInt) {
+        raw = new BigInt64Array(meta.data.map(BigInt));
+      } else {
+        raw = new Float32Array(meta.data);
+      }
+      feeds[name] = new ort.Tensor(isInt ? 'int64' : 'float32', raw, meta.shape);
+    }
+
+    const results = await sess.run(feeds);
+    const elapsed = (performance.now() - t0).toFixed(1);
+
+    const energyTensor = results[Object.keys(results)[0]];
+    const onnxEnergy = energyTensor.data[0];
+    const ptEnergy = info.ptEnergy;
+    const diff = Math.abs(onnxEnergy - ptEnergy);
+    const ptMs = info.ptTimeMs;
+    const onnxPyMs = info.onnxTimeMs;
+    const onnxBrowserMs = parseFloat(elapsed);
+
+    // Update energy boxes
+    document.getElementById('onnx-val').textContent = onnxEnergy.toFixed(4);
+    document.getElementById('pt-val').textContent = ptEnergy.toFixed(4);
+
+    const badge = document.getElementById('match-badge');
+    if (diff < 0.001) {
+      badge.className = 'match-badge exact';
+      badge.textContent = `✓ Exact match with MACE — |Δ| = ${diff.toExponential(2)} eV`;
+    } else {
+      badge.className = 'match-badge close';
+      badge.textContent = `⚠ Difference from MACE: ${diff.toFixed(6)} eV`;
+    }
+
+    // Update timing boxes
+    document.getElementById('time-onnx-browser').textContent = onnxBrowserMs.toFixed(1);
+    document.getElementById('time-onnx-py').textContent = onnxPyMs.toFixed(2);
+    document.getElementById('time-pt-py').textContent = ptMs.toFixed(2);
+
+    // Speedup badge (Python ONNX vs PyTorch, apples-to-apples)
+    const pySpeedup = ptMs / onnxPyMs;
+    const speedupBadge = document.getElementById('speedup-badge');
+    const faster = pySpeedup >= 1.0;
+    speedupBadge.style.color = faster ? '#3fb950' : '#d29922';
+    speedupBadge.style.borderColor = faster ? '#238636' : '#9e6a03';
+    speedupBadge.style.background = faster ? '#0f2a1a' : '#1a1a0a';
+    speedupBadge.textContent = faster
+      ? `ONNX is ${pySpeedup.toFixed(2)}× faster than MACE (Python CPU)`
+      : `ONNX is ${(1/pySpeedup).toFixed(2)}× slower than MACE (Python CPU) — scatter_add workaround overhead`;
+
+    document.getElementById('result-card').style.display = 'block';
+    status.textContent = `✓ Done! (${info.formula})`;
+
+    // Update benchmark table
+    benchResults[currentMol] = {
+      label: info.label.split('(')[0].trim(),
+      nAtoms: info.nAtoms,
+      nEdges: info.nEdges,
+      ptEnergy,
+      onnxEnergy,
+      diff,
+      ptMs,
+      onnxPyMs,
+      onnxBrowserMs,
+    };
+    renderBenchTable();
+
+    btn.textContent = '⚡ Run Again';
+    btn.disabled = false;
+
+  } catch (err) {
+    status.textContent = '✗ Error: ' + err.message;
+    console.error(err);
+    btn.disabled = false;
+    btn.textContent = '⚡ Try Again';
+  }
+}
+
+// ── Benchmark table ───────────────────────────────────────────────────────────
+function renderBenchTable() {
+  const card = document.getElementById('bench-card');
+  const tbody = document.getElementById('bench-body');
+  card.style.display = 'block';
+  tbody.innerHTML = '';
+
+  for (const [key, r] of Object.entries(benchResults)) {
+    const diffCls = r.diff < 0.001 ? 'exact' : 'close';
+    const pySpeedup = r.ptMs / r.onnxPyMs;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${r.label}</td>
+      <td style="color:#8b949e">${r.nAtoms}</td>
+      <td style="color:#8b949e">${r.nEdges}</td>
+      <td style="color:#3fb950">${r.ptEnergy.toFixed(4)}</td>
+      <td style="color:#58a6ff">${r.onnxEnergy.toFixed(4)}</td>
+      <td class="${diffCls}">${r.diff.toExponential(1)}</td>
+      <td style="color:#3fb950">${r.ptMs.toFixed(1)}</td>
+      <td style="color:#58a6ff">${r.onnxPyMs.toFixed(1)}</td>
+      <td style="color:#bc8cff">${r.onnxBrowserMs.toFixed(1)}</td>
+    `;
+    tbody.appendChild(row);
+  }
+}
+</script>
+</body>
+</html>
