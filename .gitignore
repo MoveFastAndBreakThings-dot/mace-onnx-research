@@ -5,3 +5,5 @@ __pycache__/
 mace_traced.pt
 *.egg-info/
 .DS_Store
+mace_small.onnx
+__marimo__/
